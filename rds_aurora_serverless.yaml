@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  VpcIdParameter:
+    Description: ID de la vpc donde se desplegara el cluster RDS
+    Type: String|Number|CommaDelimitedList
+    Default: ""
+  
+  # VPC
+  VpcCidrBlockParameter:
+    Description: CIDR de la vpc que se creara
+    Type: String|Number|CommaDelimitedList
+    Default: "172.31.0.0/16"
+  
+  PublicSubnetCidr1Parameter:
+    Description: CIDR de la vpc que se creara
+    Type: String|Number|CommaDelimitedList
+    Default: "172.31.0.0/16"
+  
+  PublicSubnetCidr2Parameter:
+    Description: CIDR de la vpc que se creara
+    Type: String|Number|CommaDelimitedList
+    Default: "172.31.0.0/16"
+  
+  PrivateSubnetCidr1Parameter:
+    Description: CIDR de la vpc que se creara
+    Type: String|Number|CommaDelimitedList
+    Default: "172.31.0.0/16"
+  
+  PrivateSubnetCidr2Parameter:
+    Description: CIDR de la vpc que se creara
+    Type: String|Number|CommaDelimitedList
+    Default: "172.31.0.0/16"
+
+
+  # RDS
+  DBNameParameter:
+    Description: Nombre de la base de datos
+    Type: String|Number|CommaDelimitedList
+    Default: ""
+  
+  DBUserNameParameter:
+    Description: Nombre del usuario Master de la base de datos
+    Type: String|Number|CommaDelimitedList
+    Default: ""
+  
+  DBPasswordParameter:
+    Description: Contraseña Master de la base de datos
+    Type: String|Number|CommaDelimitedList
+    Default: ""
+  
+  ClusterMaxCapacityParameter:
+    Description: Capacidad maxima de escalado del cluster
+    Type: String|Number|CommaDelimitedList
+    Default: ""
+  
+  ClusterMinCapacityParameter:
+    Description: Capacidad minima de escalado del cluster
+    Type: String|Number|CommaDelimitedList
+    Default: ""
+
+  SubnetIdsParameter:
+    Description: Ids de las subredes para desplegar el cluster RDS
+    Type: String|Number|CommaDelimitedList
+    Default: ""
+
+Description: Cluster RDS Aurora serverless v2
+
+Resources:
+  AuroraClusterVERIA:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql # Especificamos el motor Aurora MySQL
+      EngineMode: serverlessv2
+      DatabaseName:
+        Ref: DBNameParameter
+      MasterUsername: 
+        Ref: DBUserNameParameter
+      MasterUserPassword:
+        Ref: DBPasswordParameter # Contraseña segura para el usuario administrador
+      SecurityGroupIds: 
+        - Ref: RDSSecurityGroup # Referencia al grupo de seguridad creado abajo
+      DBSubnetGroupName: 
+        - Ref: DBSubnetGroup # Referencia al grupo de subredes creado abajo
+      ScalingConfiguration:
+        MinCapacity: 
+          Ref: ClusterMaxCapacityParameter # Mínimo de 0.5 ACUs
+        MaxCapacity: 
+          Ref: ClusterMaxCapacityParameter # Máximo de 8 ACUs
+        AutoPause: true
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora MySQL Serverless
+      SubnetIds:
+        - Ref: PrivateSubnet1 # Referencia a subredes privadas existentes
+        - Ref: PrivateSubnet2
+        # !Split [ ",", 
+        #   !Join [ ",", [
+        #     !Ref SubnetIdsParameter 
+        #   ] ]
+        # ]
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Aurora MySQL Serverless
+      VpcId: 
+        Ref: VPC # Referencia a la VPC existente
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306 
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: 0.0.0.0/0
+
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+        Ref: VpcCidrBlockParameter
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: vpc-VERIA
+
+  # Subredes Públicas
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Ref: VPC
+      CidrBlock: 
+        Ref: PublicSubnetCidr1Parameter
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-PublicSubnet1"
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Ref: VPC
+      CidrBlock:
+        Ref: PublicSubnetCidr2Parameter
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet2
+
+  # Subredes Privadas
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Ref: VPC
+      CidrBlock:
+        Ref: PrivateSubnetCidr1Parameter
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateSubnet1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Ref: VPC
+      CidrBlock:
+        Ref: PrivateSubnetCidr2Parameter
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateSubnet2
+  
